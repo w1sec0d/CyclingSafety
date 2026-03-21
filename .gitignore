@@ -1,3 +1,4 @@
+# Environment variables
 .venv
 .env
 .env.local
@@ -7,3 +8,6 @@
 .env.development
 .env.test
 .env.production
+
+# Own data
+own_data/
