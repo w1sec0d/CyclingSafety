@@ -9,5 +9,6 @@
 .env.test
 .env.production
 
-# Own data
+# Data
 own_data/
+data/
