@@ -12,3 +12,8 @@
 # Data
 own_data/
 data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
