@@ -8,22 +8,41 @@ Each recording folder contains separate CSV files per sensor
 single CSV per recording at 50 Hz (20 ms bins), aggregating by average when
 multiple readings fall in the same bin.
 
-For artificial-event recordings that include Annotation.csv, two additional
-preprocessing steps are available:
+Project structure
+-----------------
+data/
+  raw/
+    artificial_events/   <- per-sensor recording folders (input for --mode artificial)
+    natural_events/      <- per-sensor recording folders (input for --mode natural)
+  processed/
+    artificial_events/   <- combined CSVs (output for --mode artificial)
+    natural_events/      <- combined CSVs (output for --mode natural)
 
-  --dedup-gap SECS   Collapse rapid consecutive annotations within SECS of
-                     each other, keeping only the last (handles mis-clicks).
-                     Default: 2.0 s.
+Usage
+-----
+  # Process artificial rides (default):
+  python utils/combine_recordings.py
 
-  --correct-timing   Shift each annotation's timestamp back to the nearest
-                     sensor peak before the button-press, compensating for the
-                     human reaction-time delay (~1.5–3 s) between the physical
-                     event and the annotation.  Uses vertical accelerometer for
-                     "Bache", yaw-rate gyroscope for "Esquivada", and total
-                     acceleration magnitude for "Freno de emergencia".
+  # Process natural (unlabeled) rides:
+  python utils/combine_recordings.py --mode natural
 
-Output goes to own_data/<folder_name>.csv by default; use --output-dir to
-write elsewhere (e.g. data/artificial_combined/).
+  # Custom paths:
+  python utils/combine_recordings.py --mode custom \\
+      --input-dir path/to/recordings --output-dir path/to/output
+
+Annotation preprocessing (artificial mode only)
+------------------------------------------------
+  --dedup-gap SECS      Collapse rapid consecutive annotations within SECS of
+                        each other, keeping only the last (handles mis-clicks).
+                        Default: 2.0 s.  Set to 0 to disable.
+
+  --correct-timing /    Shift each annotation's timestamp back to the nearest
+  --no-correct-timing   sensor peak before the button-press, compensating for
+                        the human reaction-time delay (~1.5–3 s).  Uses
+                        vertical accelerometer for "Bache", yaw-rate gyroscope
+                        for "Esquivada", and total acceleration magnitude for
+                        "Freno de emergencia".
+                        Enabled by default in artificial mode.
 """
 
 from pathlib import Path
@@ -382,21 +401,43 @@ def combine_recording(
 
 
 def main():
+    # Project root is one level above utils/
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
+        "--mode",
+        choices=["artificial", "natural", "custom"],
+        default="artificial",
+        help=(
+            "Processing mode. 'artificial': read data/raw/artificial_events, "
+            "write data/processed/artificial_events (annotation cleanup on by default). "
+            "'natural': read data/raw/natural_events, write data/processed/natural_events "
+            "(annotation cleanup off). "
+            "'custom': use explicit --input-dir and --output-dir. "
+            "Default: artificial"
+        ),
+    )
+    parser.add_argument(
         "--input-dir",
         type=Path,
-        default=Path(__file__).resolve().parent / "own_data" / "cycling_recordings",
-        help="Directory containing recording folders (default: own_data/cycling_recordings)",
+        default=None,
+        help=(
+            "Directory containing recording folders. "
+            "Required when --mode custom; ignored otherwise."
+        ),
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path(__file__).resolve().parent / "own_data",
-        help="Directory to write combined CSVs (default: own_data/)",
+        default=None,
+        help=(
+            "Directory to write combined CSVs. "
+            "Required when --mode custom; ignored otherwise."
+        ),
     )
     parser.add_argument(
         "--overwrite",
@@ -412,49 +453,83 @@ def main():
         help=(
             "Collapse annotation chains where consecutive events are within "
             "SECS of each other, keeping only the last (handles mis-clicks). "
-            "Set to 0 to disable. Default: 2.0"
+            "Set to 0 to disable. Default: 2.0 (active in artificial mode only)"
+        ),
+    )
+    # correct-timing is a boolean flag with an explicit --no-correct-timing inverse.
+    # The default is resolved after argument parsing based on the chosen mode.
+    parser.add_argument(
+        "--correct-timing",
+        dest="correct_timing",
+        action="store_true",
+        default=None,
+        help=(
+            "Shift annotation timestamps to the nearest preceding sensor peak, "
+            "compensating for human reaction-time delay. "
+            "Enabled by default in artificial mode."
         ),
     )
     parser.add_argument(
-        "--correct-timing",
-        action="store_true",
-        default=False,
-        help=(
-            "Shift annotation timestamps to the nearest preceding sensor peak, "
-            "compensating for human reaction-time delay between event and "
-            "button press. Recommended for artificial-event recordings."
-        ),
+        "--no-correct-timing",
+        dest="correct_timing",
+        action="store_false",
+        help="Disable timing correction even in artificial mode.",
     )
     args = parser.parse_args()
 
-    dedup_gap: float | None = args.dedup_gap if args.dedup_gap > 0 else None
+    # ── Resolve input / output directories from mode ───────────────────────────
+    if args.mode == "artificial":
+        input_dir  = PROJECT_ROOT / "data" / "raw" / "artificial_events"
+        output_dir = PROJECT_ROOT / "data" / "processed" / "artificial_events"
+        # Default: dedup + timing correction both enabled for artificial rides
+        correct_timing = True if args.correct_timing is None else args.correct_timing
+        dedup_gap: float | None = args.dedup_gap if args.dedup_gap > 0 else None
+    elif args.mode == "natural":
+        input_dir  = PROJECT_ROOT / "data" / "raw" / "natural_events"
+        output_dir = PROJECT_ROOT / "data" / "processed" / "natural_events"
+        # Natural rides have no annotations; disable both by default
+        correct_timing = False if args.correct_timing is None else args.correct_timing
+        dedup_gap = None
+    else:  # custom
+        if args.input_dir is None or args.output_dir is None:
+            print(
+                "Error: --mode custom requires both --input-dir and --output-dir.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        input_dir  = args.input_dir
+        output_dir = args.output_dir
+        correct_timing = False if args.correct_timing is None else args.correct_timing
+        dedup_gap = args.dedup_gap if args.dedup_gap > 0 else None
 
-    if not args.input_dir.exists():
+    if not input_dir.exists():
         print(
-            f"Error: input directory does not exist: {args.input_dir}", file=sys.stderr
+            f"Error: input directory does not exist: {input_dir}", file=sys.stderr
         )
         sys.exit(1)
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    folders = sorted([d for d in args.input_dir.iterdir() if d.is_dir()])
+    folders = sorted([d for d in input_dir.iterdir() if d.is_dir()])
     if not folders:
         print("No recording folders found.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Found {len(folders)} recording folders in {args.input_dir}")
-    print(f"Output directory: {args.output_dir}")
-    print(f"Target frequency: {TARGET_HZ} Hz (bin width: {BIN_WIDTH*1000:.0f} ms)")
+    print(f"Mode            : {args.mode}")
+    print(f"Input dir       : {input_dir}")
+    print(f"Output dir      : {output_dir}")
+    print(f"Target Hz       : {TARGET_HZ} Hz  (bin width: {BIN_WIDTH*1000:.0f} ms)")
     print(
-        f"Annotation dedup gap: {dedup_gap}s"
+        f"Annotation dedup: {dedup_gap}s gap"
         if dedup_gap
         else "Annotation dedup: disabled"
     )
-    print(f"Timing correction: {'enabled' if args.correct_timing else 'disabled'}\n")
+    print(f"Timing correction: {'enabled' if correct_timing else 'disabled'}")
+    print(f"\nFound {len(folders)} recording folder(s)\n")
 
     success, skipped, failed = 0, 0, 0
     for folder in folders:
-        out_path = args.output_dir / f"{folder.name}.csv"
+        out_path = output_dir / f"{folder.name}.csv"
 
         if out_path.exists() and not args.overwrite:
             print(f"  SKIP {folder.name} (already exists)")
@@ -465,7 +540,7 @@ def main():
             combined = combine_recording(
                 folder,
                 dedup_gap=dedup_gap,
-                correct_timing=args.correct_timing,
+                correct_timing=correct_timing,
             )
             combined.to_csv(out_path, index=False)
 
@@ -474,8 +549,8 @@ def main():
             n_annot = combined["annotation"].notna().sum()
             print(
                 f"  OK   {folder.name}\n"
-                f"       {n_rows} rows, {duration:.1f}s duration, "
-                f"{n_annot} annotations"
+                f"       {n_rows} rows, {duration:.1f}s, "
+                f"{n_annot} annotation(s)"
             )
             success += 1
         except Exception as e:
