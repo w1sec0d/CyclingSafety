@@ -397,6 +397,13 @@ def combine_recording(
         if col not in grid.columns:
             grid[col] = np.nan
 
+    # Forward-fill GPS coordinates: GPS updates at ~1 Hz while the grid is 50 Hz,
+    # so most rows would be NaN otherwise. ffill preserves the last known position.
+    gps_ffill_cols = ["location_latitude", "location_longitude", "location_altitude"]
+    for col in gps_ffill_cols:
+        if col in grid.columns:
+            grid[col] = grid[col].ffill()
+
     return grid[COLUMN_ORDER]
 
 
