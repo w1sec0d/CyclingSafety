@@ -18,20 +18,10 @@ El proyecto desarrolla dos sistemas de clasificación de CSE basados en señales
 |---|---|---|---|
 | **Modelo A** | MLP heurístico | normal / bache / severo | ✅ Completo |
 | **Modelo B** | MLP supervisado | normal / bache / esquivada / freno | ✅ Completo |
-| **Modelo C** | 1D-CNN profunda | normal / bache / esquivada / freno | 🔄 En desarrollo |
+| **Modelo C** | 1D-CNN profunda | normal / bache / esquivada / freno | ✅ Completo  |
+| **Modelo D** | 1D-CNN (AutoML) profunda | normal / bache / esquivada / freno | ✅ Completo  |
 
 Los modelos entrenados se integran con coordenadas GPS para generar **mapas interactivos de calidad vial** sobre recorridos reales en Bogotá.
-
----
-
-## Resultados preliminares
-
-| Modelo | Accuracy | F1 Macro | Conjunto de validación |
-|---|---|---|---|
-| A — Heurístico (3 clases) | 98,2 % | 0,954 | 5 recorridos naturales hold-out |
-| B — Supervisado (4 clases) | 97,8 % | 0,888 | 30 % de recorridos artificiales |
-
-El Modelo B supera al heurístico en **+12,1 pp de accuracy** y **+55 pp de F1 macro** sobre datos con etiquetas ground-truth.
 
 ---
 
@@ -71,12 +61,6 @@ CyclingSafety/
 ## Dataset
 
 Los datos propios fueron recolectados con un **Xiaomi POCO X6** montado en el cuadro de la bicicleta usando **Sensor Logger**, a 100 Hz (remuestreados a 50 Hz).
-
-| Tipo | Recorridos | Muestras | Duración | Anotaciones |
-|---|---|---|---|---|
-| Artificiales (etiquetados) | 11 | 694.923 | ~3,9 h | 335 (152 baches, 96 esquivadas, 87 frenos) |
-| Naturales (sin etiquetar) | 24 | 1.351.679 | ~7,5 h | — |
-| **Total** | **35** | **2.046.602** | **~11,4 h** | **335** |
 
 📁 **Dataset en Google Drive:** [Acceder al dataset](https://drive.google.com/drive/folders/1-24wbZkLPmLIyj7BUMyjm0R-Bd0dZiIx?usp=sharing)
 
@@ -130,30 +114,6 @@ O acceder directamente en **Google Colab:** [Abrir en Colab](https://drive.googl
 
 ---
 
-## Pipeline del notebook principal
-
-```
-Carga de datos (natural + artificial)
-        ↓
-Preprocesamiento IMU + GPS (ffill, interpolación)
-        ↓
-Windowing: ventanas de 128 muestras × 6 canales (2,56 s, stride 50%)
-        ↓
-Feature Engineering: 72 features estadísticas por ventana
-        ↓
-    ┌───────────────────────┬─────────────────────────────┐
-    │     Modelo A          │         Modelo B             │
-    │  Etiquetado heurístico│  SMOTE + entrenamiento       │
-    │  (severity/bump score)│  supervisado 4 clases        │
-    └───────────────────────┴─────────────────────────────┘
-        ↓
-Evaluación: accuracy, F1, matrices de confusión, curvas de aprendizaje
-        ↓
-Mapas interactivos (folium): eventos CSE + heatmap de severidad
-```
-
----
-
 ## Notebooks de investigación
 
 El directorio `notebooks/research/` contiene notebooks de estudio sobre arquitecturas de redes neuronales no directamente ligadas al problema de ciclismo, desarrollados como parte del contexto académico del curso:
@@ -174,12 +134,6 @@ os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=0"
 ```
 
 Estas configuraciones **no se activan en Colab** (donde no generan el mismo conflicto) gracias a la detección automática del entorno de ejecución.
-
----
-
-## Código fuente
-
-🔗 **GitHub:** [https://github.com/w1sec0d/CyclingSafety](https://github.com/w1sec0d/CyclingSafety)
 
 ---
 
