@@ -20,3 +20,6 @@ __pycache__/
 
 # Antigravity CLI
 .antigravitycli
+
+# Heavy Features
+features/X_all_windows.npy
