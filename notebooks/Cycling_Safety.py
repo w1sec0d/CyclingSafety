@@ -436,6 +436,21 @@ if artificial_imu_list:
     print(f"\nDatos artificiales total: {len(artificial_imu)} muestras IMU")
     print(f"Anotaciones por tipo:")
     print(artificial_imu["annotation"].value_counts())
+    
+    # ── NUEVA SECCIÓN: ESTRUCTURA Y VISTA PREVIA DE LOS DATOS ──────────────────
+    print("\n" + "="*60)
+    print(" 📊 ESTRUCTURA TÉCNICA DEL DATAFRAME (artificial_imu)")
+    print("="*60)
+    # .info() muestra el conteo de no-nulos, nombres de columnas y dtypes (float64, int, object)
+    artificial_imu.info()
+    
+    print("\n" + "="*60)
+    print(" 👀 VISTA PREVIA DE LOS PRIMEROS REGISTROS (Primeras 5 filas)")
+    print("="*60)
+    # IPython display formatea el .head() como una tabla interactiva de Google Colab
+    from IPython.display import display
+    display(artificial_imu.head())
+    
 else:
     artificial_imu = pd.DataFrame(columns=["timestamp"] + IMU_COLS + GPS_COLS + ["annotation", "route", "lap", "source"])
     print("No se cargaron datos artificiales.")
@@ -2203,170 +2218,146 @@ if has_supervised:
 # ## BLOQUE 30 — Definición de la Arquitectura CNN 1D
 
 # %%
-%pip install keras-tuner
+## BLOQUE 30 — Definición de Arquitecturas (Manual y AutoML)
+# ==============================================================================
 import keras_tuner as kt
 from tensorflow import keras
 from tensorflow.keras import layers
 
-def build_cnn_hypermodel(hp):
-    inp = keras.Input(shape=(WIN_LEN, len(IMU_COLS)))
-    x = inp
-    
-    # 1. Ajustar el número de bloques convolucionales (entre 2 y 4)
-    for i in range(hp.Int('conv_blocks', 2, 4)):
-        # Hiperparámetros dinámicos para cada bloque
-        filters = hp.Choice(f'filters_{i}', values=[32, 64, 128, 256])
-        kernel_size = hp.Choice(f'kernel_{i}', values=[3, 5, 7])
-        dropout_rate = hp.Float(f'dropout_conv_{i}', min_value=0.1, max_value=0.5, step=0.1)
-        
-        x = layers.Conv1D(filters=filters, kernel_size=kernel_size, activation="relu", padding="same")(x)
-        x = layers.BatchNormalization()(x)
-        x = layers.MaxPooling1D(pool_size=2)(x)
-        x = layers.Dropout(dropout_rate)(x)
-        
+input_shape_cnn = (WIN_LEN, len(IMU_COLS))
+
+# ---------------------------------------------------------
+# 1. ARQUITECTURA MANUAL (La que definiste tú)
+# ---------------------------------------------------------
+def build_manual_cnn(input_shape, n_classes, name="cnn_manual"):
+    inp = keras.Input(shape=input_shape, name=f"{name}_input")
+    x = layers.Conv1D(filters=64, kernel_size=5, activation="relu", padding="same")(inp)
+    x = layers.BatchNormalization()(x)
+    x = layers.MaxPooling1D(pool_size=2)(x)
+    x = layers.Dropout(0.3)(x)
+
+    x = layers.Conv1D(filters=128, kernel_size=3, activation="relu", padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.MaxPooling1D(pool_size=2)(x)
+    x = layers.Dropout(0.3)(x)
+
+    x = layers.Conv1D(filters=256, kernel_size=3, activation="relu", padding="same")(x)
+    x = layers.BatchNormalization()(x)
     x = layers.GlobalAveragePooling1D()(x)
-    
-    # 2. Capa densa final
-    dense_units = hp.Choice('dense_units', values=[64, 128, 256])
-    dense_dropout = hp.Float('dropout_dense', min_value=0.2, max_value=0.6, step=0.1)
-    
-    x = layers.Dense(dense_units, activation="relu")(x)
-    x = layers.Dropout(dense_dropout)(x)
-    
-    # 3. Salida (Usaremos 4 clases para optimizar el modelo supervisado)
-    out = layers.Dense(len(LABELS_4), activation="softmax")(x)
-    
-    model = keras.Model(inp, out)
-    
-    # 4. Ajustar el Learning Rate en escala logarítmica
-    lr = hp.Float("learning_rate", min_value=1e-4, max_value=1e-2, sampling="log")
-    
+
+    x = layers.Dense(128, activation="relu")(x)
+    x = layers.Dropout(0.4)(x)
+    out = layers.Dense(n_classes, activation="softmax")(x)
+
+    model = keras.Model(inp, out, name=name)
     model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=lr),
+        optimizer=keras.optimizers.Adam(learning_rate=LR),
         loss="sparse_categorical_crossentropy",
         metrics=["accuracy"]
     )
-    
     return model
 
-print("HyperModel para CNN definido con éxito.")
+# ---------------------------------------------------------
+# 2. ARQUITECTURA AUTOML (Espacio de Búsqueda)
+# Usamos una "fábrica" para poder pasarle el número de clases
+# ---------------------------------------------------------
+def build_hypermodel_factory(n_classes):
+    def build_cnn_hypermodel(hp):
+        inp = keras.Input(shape=input_shape_cnn)
+        x = inp
+
+        for i in range(hp.Int('conv_blocks', 2, 4)):
+            filters = hp.Choice(f'filters_{i}', values=[32, 64, 128, 256])
+            kernel_size = hp.Choice(f'kernel_{i}', values=[3, 5])
+            dropout_rate = hp.Float(f'dropout_conv_{i}', min_value=0.1, max_value=0.5, step=0.1)
+
+            x = layers.Conv1D(filters=filters, kernel_size=kernel_size, activation="relu", padding="same")(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.MaxPooling1D(pool_size=2)(x)
+            x = layers.Dropout(dropout_rate)(x)
+
+        x = layers.GlobalAveragePooling1D()(x)
+
+        dense_units = hp.Choice('dense_units', values=[64, 128, 256])
+        dense_dropout = hp.Float('dropout_dense', min_value=0.2, max_value=0.5, step=0.1)
+
+        x = layers.Dense(dense_units, activation="relu")(x)
+        x = layers.Dropout(dense_dropout)(x)
+
+        out = layers.Dense(n_classes, activation="softmax")(x)
+        model = keras.Model(inp, out)
+
+        lr = hp.Float("learning_rate", min_value=1e-4, max_value=5e-3, sampling="log")
+        model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr), loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+        return model
+    return build_cnn_hypermodel
+
+print("Arquitecturas Manual y de AutoML definidas.")
 
 # %% [markdown]
 # ## BLOQUE 31 — Entrenamiento de Modelos CNN
 
 # %%
-# Calcular pesos de clase para balancear el entrenamiento durante la búsqueda
-classes_present = np.unique(y_train_cnn_s)
-weights = compute_class_weight(class_weight="balanced", classes=classes_present, y=y_train_cnn_s)
-cw = dict(zip(classes_present.tolist(), weights.tolist()))
-
-print("Iniciando KerasTuner (Bayesian Optimization)...")
-
-tuner = kt.BayesianOptimization(
-    build_cnn_hypermodel,
-    objective=kt.Objective("val_accuracy", direction="max"), # O usa val_loss minimizado
-    max_trials=15,          # Probará 15 arquitecturas distintas
-    num_initial_points=5,   # Puntos de partida aleatorios antes de la inferencia bayesiana
-    directory=str(OUT_DIR / "automl_tuner"),
-    project_name="cycling_cnn_supervised",
-    overwrite=True
-)
-
-# Callbacks para detener modelos que no prometen en cada iteración
-stop_early = keras.callbacks.EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True)
-
-# Ejecutar la búsqueda
-tuner.search(
-    X_train_cnn_s, y_train_cnn_s,
-    validation_data=(X_val_cnn_s, y_val_s),
-    epochs=30, # Épocas máximas por arquitectura
-    batch_size=BATCH_SIZE,
-    class_weight=cw,
-    callbacks=[stop_early],
-    verbose=1
-)
-
-print("\n" + "="*60)
-print("BÚSQUEDA AUTOML COMPLETADA")
-print("="*60)
-
-# Obtener la arquitectura ganadora
-best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-print(f"""
-Mejores hiperparámetros encontrados:
-- Número de bloques Conv: {best_hps.get('conv_blocks')}
-- Tasa de aprendizaje: {best_hps.get('learning_rate'):.5f}
-- Unidades de capa densa: {best_hps.get('dense_units')}
-""")
-
-# Construir el modelo final con los mejores parámetros y reentrenarlo
-print("Reentrenando el modelo óptimo desde cero para afinar pesos...")
-cnn_supervised = tuner.hypermodel.build(best_hps)
-
-history_cnn_s = cnn_supervised.fit(
-    X_train_cnn_s, y_train_cnn_s,
-    validation_data=(X_val_cnn_s, y_val_s),
-    epochs=EPOCHS, # Usar el total de épocas definidas globalmente
-    batch_size=BATCH_SIZE,
-    class_weight=cw,
-    callbacks=[
-        keras.callbacks.EarlyStopping(monitor="val_loss", patience=12, restore_best_weights=True),
-        keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6)
-    ],
-    verbose=1
-)
-
-# %%
-# CNN Heurística
-## BLOQUE 31.5 — Recuperación y Entrenamiento del CNN Heurístico
+## BLOQUE 31 — Entrenamiento (Manual) y Búsqueda (AutoML)
 # ==============================================================================
-# Construimos rápidamente la arquitectura base para el modelo de 3 clases
-# para poder compararlo en la tabla final.
-# ==============================================================================
-from tensorflow import keras
-from tensorflow.keras import layers
 
-def build_basic_cnn(input_shape, n_classes):
-    inp = keras.Input(shape=input_shape)
-    
-    x = layers.Conv1D(filters=64, kernel_size=5, activation="relu", padding="same")(inp)
-    x = layers.BatchNormalization()(x)
-    x = layers.MaxPooling1D(pool_size=2)(x)
-    x = layers.Dropout(0.3)(x)
-    
-    x = layers.Conv1D(filters=128, kernel_size=3, activation="relu", padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.GlobalAveragePooling1D()(x)
-    
-    x = layers.Dense(128, activation="relu")(x)
-    x = layers.Dropout(0.4)(x)
-    out = layers.Dense(n_classes, activation="softmax")(x)
-    
-    return keras.Model(inp, out, name="cnn_heuristic")
+def get_class_weights(y):
+    classes = np.unique(y)
+    weights = compute_class_weight(class_weight="balanced", classes=classes, y=y)
+    return dict(zip(classes.tolist(), weights.tolist()))
 
-# 1. Instanciar el modelo
-cnn_heuristic = build_basic_cnn((WIN_LEN, len(IMU_COLS)), len(LABELS_3))
+callbacks_manual = [
+    keras.callbacks.EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True),
+    keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=4, min_lr=1e-6)
+]
+callbacks_automl = [keras.callbacks.EarlyStopping(monitor='val_loss', patience=6, restore_best_weights=True)]
 
-# 2. Compilar
-cnn_heuristic.compile(
-    optimizer=keras.optimizers.Adam(learning_rate=1e-3),
-    loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"]
+# ---------------------------------------------------------
+# A. PARADIGMA HEURÍSTICO (3 Clases)
+# ---------------------------------------------------------
+print("\n" + "="*50 + "\n1. ENTRENANDO CNN MANUAL - HEURÍSTICA\n" + "="*50)
+cnn_h_manual = build_manual_cnn(input_shape_cnn, 3, "cnn_h_manual")
+history_h_manual = cnn_h_manual.fit(
+    X_train_cnn_h, y_train_h, validation_data=(X_val_cnn_h, y_val_h),
+    epochs=EPOCHS, batch_size=BATCH_SIZE, class_weight=get_class_weights(y_train_h),
+    callbacks=callbacks_manual, verbose=1
 )
 
-print("Entrenando CNN Heurístico (3 clases)...")
-
-# 3. Entrenar
-history_cnn_h = cnn_heuristic.fit(
-    X_train_cnn_h, y_train_h,
-    validation_data=(X_val_cnn_h, y_val_h) if len(X_val_cnn_h) > 0 else None,
-    epochs=EPOCHS, 
-    batch_size=BATCH_SIZE,
-    callbacks=[
-        keras.callbacks.EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True)
-    ],
-    verbose=1
+print("\n" + "="*50 + "\n2. EJECUTANDO AUTOML - HEURÍSTICA\n" + "="*50)
+tuner_h = kt.BayesianOptimization(
+    build_hypermodel_factory(3), objective=kt.Objective("val_accuracy", direction="max"),
+    max_trials=8, directory=str(OUT_DIR / "automl"), project_name="heuristica", overwrite=True
 )
+tuner_h.search(X_train_cnn_h, y_train_h, validation_data=(X_val_cnn_h, y_val_h),
+               epochs=25, batch_size=BATCH_SIZE, class_weight=get_class_weights(y_train_h), callbacks=callbacks_automl, verbose=1)
+cnn_h_automl = tuner_h.hypermodel.build(tuner_h.get_best_hyperparameters()[0])
+print("\nReentrenando el mejor modelo AutoML Heurístico...")
+history_h_automl = cnn_h_automl.fit(X_train_cnn_h, y_train_h, validation_data=(X_val_cnn_h, y_val_h),
+                                    epochs=EPOCHS, batch_size=BATCH_SIZE, class_weight=get_class_weights(y_train_h), callbacks=callbacks_manual, verbose=0)
+
+# ---------------------------------------------------------
+# B. PARADIGMA SUPERVISADO (4 Clases)
+# ---------------------------------------------------------
+if has_supervised:
+    print("\n" + "="*50 + "\n3. ENTRENANDO CNN MANUAL - SUPERVISADA\n" + "="*50)
+    cnn_s_manual = build_manual_cnn(input_shape_cnn, 4, "cnn_s_manual")
+    history_s_manual = cnn_s_manual.fit(
+        X_train_cnn_s, y_train_cnn_s, validation_data=(X_val_cnn_s, y_val_s),
+        epochs=EPOCHS, batch_size=BATCH_SIZE, class_weight=get_class_weights(y_train_cnn_s),
+        callbacks=callbacks_manual, verbose=1
+    )
+
+    print("\n" + "="*50 + "\n4. EJECUTANDO AUTOML - SUPERVISADA\n" + "="*50)
+    tuner_s = kt.BayesianOptimization(
+        build_hypermodel_factory(4), objective=kt.Objective("val_accuracy", direction="max"),
+        max_trials=8, directory=str(OUT_DIR / "automl"), project_name="supervisada", overwrite=True
+    )
+    tuner_s.search(X_train_cnn_s, y_train_cnn_s, validation_data=(X_val_cnn_s, y_val_s),
+                   epochs=25, batch_size=BATCH_SIZE, class_weight=get_class_weights(y_train_cnn_s), callbacks=callbacks_automl, verbose=1)
+    cnn_s_automl = tuner_s.hypermodel.build(tuner_s.get_best_hyperparameters()[0])
+    print("\nReentrenando el mejor modelo AutoML Supervisado...")
+    history_s_automl = cnn_s_automl.fit(X_train_cnn_s, y_train_cnn_s, validation_data=(X_val_cnn_s, y_val_s),
+                                        epochs=EPOCHS, batch_size=BATCH_SIZE, class_weight=get_class_weights(y_train_cnn_s), callbacks=callbacks_manual, verbose=0)
 
 # %% [markdown]
 # ## BLOQUE 32 — Evaluación y Comparación CNN (Test Sets)
@@ -2374,53 +2365,51 @@ history_cnn_h = cnn_heuristic.fit(
 # Se reutiliza la función evaluate_and_report definida en el Bloque 20
 
 # %%
-print("\n" + "="*60)
-print("EVALUACIÓN CNN: HEURÍSTICO (Test set oculto)")
-print("="*60)
-test_results_cnn_h = evaluate_and_report(cnn_heuristic, X_test_cnn_h, y_test_h, "CNN TEST Heuristic", LABELS_3)
+## BLOQUE 32 — Evaluación y Generación de Tabla Maestra Comparativa
+# ==============================================================================
+import pandas as pd
 
+print("\n" + "="*70)
+print("EVALUACIONES EN TEST SET OCULTO (ROUTE-LEVEL)")
+print("="*70)
+
+# 1. Evaluar Heurísticas (3 Clases) - No requieren tuning de umbrales
+res_h_manual = evaluate_and_report(cnn_h_manual, X_test_cnn_h, y_test_h, "CNN MANUAL - Heurística", LABELS_3)
+res_h_automl = evaluate_and_report(cnn_h_automl, X_test_cnn_h, y_test_h, "CNN AUTOML - Heurística", LABELS_3)
+
+# 2. Evaluar Supervisadas (4 Clases) - Requieren tuning de umbrales en Validación
 if has_supervised:
-    print("\n" + "="*60)
-    print("EVALUACIÓN CNN: SUPERVISADO (Test set oculto)")
-    print("="*60)
-    # Calibramos umbrales en validación y los aplicamos en test
-    val_results_cnn_s = evaluate_and_report(
-        cnn_supervised, X_val_cnn_s, y_val_s,
-        "CNN Validation Supervised (Tuning)", LABELS_4, tune_thr=True
-    )
-    best_thr_cnn_s = val_results_cnn_s["best_thresholds"] if val_results_cnn_s else None
+    # A. Manual
+    val_res_s_manual = evaluate_and_report(cnn_s_manual, X_val_cnn_s, y_val_s, "Validación CNN MANUAL (Tuning)", LABELS_4, tune_thr=True)
+    res_s_manual = evaluate_and_report(cnn_s_manual, X_test_cnn_s, y_test_s, "CNN MANUAL - Supervisada", LABELS_4, tune_thr=False, best_thresholds=val_res_s_manual["best_thresholds"])
 
-    test_results_cnn_s = evaluate_and_report(
-        cnn_supervised, X_test_cnn_s, y_test_s,
-        "CNN TEST Supervised (hidden)", LABELS_4, tune_thr=False, best_thresholds=best_thr_cnn_s
-    )
+    # B. AutoML
+    val_res_s_automl = evaluate_and_report(cnn_s_automl, X_val_cnn_s, y_val_s, "Validación CNN AUTOML (Tuning)", LABELS_4, tune_thr=True)
+    res_s_automl = evaluate_and_report(cnn_s_automl, X_test_cnn_s, y_test_s, "CNN AUTOML - Supervisada", LABELS_4, tune_thr=False, best_thresholds=val_res_s_automl["best_thresholds"])
 
-# Generar tabla final comparativa MLP vs CNN
+# 3. Construir la Tabla Comparativa Definitiva (MLP vs CNN Manual vs CNN AutoML)
 comparison_rows = []
 
-# Añadir datos MLP
-comparison_rows.append({"Arquitectura": "MLP (Features)", "Paradigma": "Heurístico (3-Clases)", "Accuracy": f"{test_results_h['accuracy']:.4f}", "F1 Macro": f"{test_results_h['f1_macro']:.4f}"})
-if has_supervised and test_results_s:
-    f1_mlp_s = test_results_s.get('f1_macro_tuned', test_results_s['f1_macro'])
-    comparison_rows.append({"Arquitectura": "MLP (Features)", "Paradigma": "Supervisado (4-Clases)", "Accuracy": f"{test_results_s.get('accuracy_tuned', test_results_s['accuracy']):.4f}", "F1 Macro": f"{f1_mlp_s:.4f}"})
+# --> Añadir resultados de MLP (Variables calculadas previamente en tu notebook)
+comparison_rows.append({"Arquitectura": "MLP (Hand-crafted Features)", "Paradigma": "Heurístico (3-Clases)", "Accuracy": f"{test_results_h['accuracy']:.4f}", "F1 Macro": f"{test_results_h['f1_macro']:.4f}"})
+if has_supervised:
+    comparison_rows.append({"Arquitectura": "MLP (Hand-crafted Features)", "Paradigma": "Supervisado (4-Clases)", "Accuracy": f"{test_results_s.get('accuracy_tuned', test_results_s['accuracy']):.4f}", "F1 Macro": f"{test_results_s.get('f1_macro_tuned', test_results_s['f1_macro']):.4f}"})
 
-# Añadir datos CNN
-comparison_rows.append({"Arquitectura": "CNN 1D (Raw Time-Series)", "Paradigma": "Heurístico (3-Clases)", "Accuracy": f"{test_results_cnn_h['accuracy']:.4f}", "F1 Macro": f"{test_results_cnn_h['f1_macro']:.4f}"})
-if has_supervised and test_results_cnn_s:
-    f1_cnn_s = test_results_cnn_s.get('f1_macro_tuned', test_results_cnn_s['f1_macro'])
-    comparison_rows.append({"Arquitectura": "CNN 1D (Raw Time-Series)", "Paradigma": "Supervisado (4-Clases)", "Accuracy": f"{test_results_cnn_s.get('accuracy_tuned', test_results_cnn_s['accuracy']):.4f}", "F1 Macro": f"{f1_cnn_s:.4f}"})
+# --> Añadir resultados de CNN MANUAL
+comparison_rows.append({"Arquitectura": "CNN 1D (Manual Architecture)", "Paradigma": "Heurístico (3-Clases)", "Accuracy": f"{res_h_manual['accuracy']:.4f}", "F1 Macro": f"{res_h_manual['f1_macro']:.4f}"})
+if has_supervised:
+    comparison_rows.append({"Arquitectura": "CNN 1D (Manual Architecture)", "Paradigma": "Supervisado (4-Clases)", "Accuracy": f"{res_s_manual.get('accuracy_tuned', res_s_manual['accuracy']):.4f}", "F1 Macro": f"{res_s_manual.get('f1_macro_tuned', res_s_manual['f1_macro']):.4f}"})
+
+# --> Añadir resultados de CNN AUTOML
+comparison_rows.append({"Arquitectura": "CNN 1D (AutoML KerasTuner)", "Paradigma": "Heurístico (3-Clases)", "Accuracy": f"{res_h_automl['accuracy']:.4f}", "F1 Macro": f"{res_h_automl['f1_macro']:.4f}"})
+if has_supervised:
+    comparison_rows.append({"Arquitectura": "CNN 1D (AutoML KerasTuner)", "Paradigma": "Supervisado (4-Clases)", "Accuracy": f"{res_s_automl.get('accuracy_tuned', res_s_automl['accuracy']):.4f}", "F1 Macro": f"{res_s_automl.get('f1_macro_tuned', res_s_automl['f1_macro']):.4f}"})
 
 comp_df = pd.DataFrame(comparison_rows)
-print("\n" + "=" * 70)
-print("COMPARACIÓN FINAL DE RENDIMIENTO EN TEST SET: MLP vs CNN 1D")
-print("=" * 70)
+print("\n" + "=" * 80)
+print("COMPARACIÓN FINAL DEFINITIVA DE RENDIMIENTO EN TEST SET OCULTO")
+print("=" * 80)
 display(comp_df)
-
-# Guardar modelos CNN
-cnn_heuristic.save(MODEL_DIR / "cnn_heuristic.keras")
-if has_supervised:
-    cnn_supervised.save(MODEL_DIR / "cnn_supervised.keras")
-print(f"Modelos CNN guardados en el directorio: {MODEL_DIR}")
 
 # %% [markdown]
 # # **Comparacion entre el MLP y el CNN**
@@ -2429,33 +2418,201 @@ print(f"Modelos CNN guardados en el directorio: {MODEL_DIR}")
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Extract data from the comparison DataFrame
-models = comp_df["Arquitectura"] + "\n" + comp_df["Paradigma"].apply(lambda x: x.split(' ')[0])
-accuracy = comp_df["Accuracy"].apply(lambda x: float(x.split(' ')[0])) # Remove '(tuned)' if present
-f1_macro = comp_df["F1 Macro"].apply(lambda x: float(x.split(' ')[0])) # Remove '(tuned)' if present
+def plot_paradigm_comparison(df, paradigm_keyword, title_suffix):
+    # Filtrar el DataFrame por la palabra clave (Heurístico o Supervisado)
+    subset = df[df["Paradigma"].str.contains(paradigm_keyword, na=False)].copy()
 
-# Gráfica de Accuracy
-plt.figure(figsize=(10, 6))
-plt.bar(models, accuracy, color=['skyblue', 'lightcoral', 'lightgreen', 'gold'])
-plt.ylim(min(accuracy) * 0.9, 1.0) # Adjust ylim dynamically
-plt.ylabel("Accuracy")
-plt.title("Comparación de Accuracy entre MLP y CNN")
-for i, v in enumerate(accuracy):
-    plt.text(i, v + 0.005, f"{v:.4f}", ha='center')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.tight_layout()
-plt.show()
+    if subset.empty:
+        print(f"No hay datos para graficar el paradigma {paradigm_keyword}.")
+        return
 
-# Gráfica de F1 Macro
-plt.figure(figsize=(10, 6))
-plt.bar(models, f1_macro, color=['skyblue', 'lightcoral', 'lightgreen', 'gold'])
-plt.ylim(min(f1_macro) * 0.9, 1.0) # Adjust ylim dynamically
-plt.ylabel("F1 Macro")
-plt.title("Comparación de F1 Macro entre MLP y CNN")
-for i, v in enumerate(f1_macro):
-    plt.text(i, v + 0.005, f"{v:.4f}", ha='center')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.tight_layout()
-plt.show()
+    # Simplificar los nombres de los modelos para el eje X
+    def simplify_name(arch):
+        if "MLP" in arch: return "MLP (Features)"
+        elif "Manual" in arch: return "CNN Manual"
+        elif "AutoML" in arch: return "CNN AutoML"
+        return arch
+
+    models = subset["Arquitectura"].apply(simplify_name).tolist()
+
+    # Extraer métricas de forma segura (por si acaso tienen texto extra)
+    accuracy = subset["Accuracy"].apply(lambda x: float(str(x).split(' ')[0])).tolist()
+    f1_macro = subset["F1 Macro"].apply(lambda x: float(str(x).split(' ')[0])).tolist()
+
+    x = np.arange(len(models))  # Ubicaciones de las etiquetas
+    width = 0.35  # Ancho de las barras
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Dibujar barras agrupadas
+    rects1 = ax.bar(x - width/2, accuracy, width, label='Accuracy', color='skyblue', edgecolor='black', alpha=0.9)
+    rects2 = ax.bar(x + width/2, f1_macro, width, label='F1 Macro', color='lightgreen', edgecolor='black', alpha=0.9)
+
+    # Configuración de etiquetas y título
+    ax.set_ylabel('Score (0.0 a 1.0)', fontsize=12)
+    ax.set_title(f'Comparación de Rendimiento: {title_suffix}', fontsize=14, fontweight='bold', pad=15)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, fontsize=11, fontweight='500')
+
+    # Ajustar límite Y dinámicamente para resaltar las diferencias
+    min_val = min(min(accuracy), min(f1_macro))
+    ax.set_ylim(min_val * 0.90, 1.02)
+
+    ax.legend(loc='lower right', fontsize=11)
+
+    # Función para añadir las etiquetas numéricas encima de cada barra
+    def autolabel(rects):
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate(f'{height:.4f}',
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 5),  # 5 puntos de offset vertical
+                        textcoords="offset points",
+                        ha='center', va='bottom', fontsize=10, fontweight='bold')
+
+    autolabel(rects1)
+    autolabel(rects2)
+
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+
+# ==============================================================================
+# Generar las gráficas por separado
+# ==============================================================================
+print("\n")
+# 1. Gráfica para los modelos Heurísticos (3 Clases)
+plot_paradigm_comparison(comp_df, "Heurístico", "Paradigma Heurístico (3 Clases)")
+
+# 2. Gráfica para los modelos Supervisados (4 Clases)
+if has_supervised:
+    plot_paradigm_comparison(comp_df, "Supervisado", "Paradigma Supervisado (4 Clases)")
+
+# %%
+## BLOQUE 33 — Curvas de Aprendizaje y Visualización de Resultados CNN (Actualizado)
+# ==============================================================================
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import numpy as np
+
+# ---------------------------------------------------------
+# 1. Función para graficar Curvas de Aprendizaje (Estilo MLP)
+# ---------------------------------------------------------
+def plot_training_curves(hist, title="CNN"):
+    if hist is None:
+        print(f"No hay historial de entrenamiento para {title}.")
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    axes[0].plot(hist.history["loss"], label="Train Loss")
+    if "val_loss" in hist.history:
+        axes[0].plot(hist.history["val_loss"], label="Val Loss")
+    axes[0].set_title("Loss vs Epoch")
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Loss")
+    axes[0].legend()
+
+    axes[1].plot(hist.history["accuracy"], label="Train Accuracy")
+    if "val_accuracy" in hist.history:
+        axes[1].plot(hist.history["val_accuracy"], label="Val Accuracy")
+    axes[1].set_title("Accuracy vs Epoch")
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Accuracy")
+    axes[1].legend()
+
+    plt.suptitle(f"Curvas de entrenamiento — {title}", fontsize=13)
+    plt.tight_layout()
+    plt.show()
+
+    if "val_loss" in hist.history:
+        final_train_loss = hist.history["loss"][-1]
+        final_val_loss   = hist.history["val_loss"][-1]
+        gap = final_val_loss - final_train_loss
+        print(f"Final train loss: {final_train_loss:.4f}, val loss: {final_val_loss:.4f}, gap: {gap:.4f}")
+        if gap > 0.3:
+            print("  Posible OVERFITTING.")
+        elif final_train_loss > 0.8:
+            print("  Posible UNDERFITTING.")
+        else:
+            print("  El modelo parece estar aprendiendo adecuadamente.")
+
+# Graficar curvas para los 4 modelos CNN
+print("\n" + "="*70)
+print("1. CURVAS DE APRENDIZAJE")
+print("="*70)
+
+print("Model C1 — CNN Manual (Heurística):")
+plot_training_curves(history_h_manual, "CNN Manual (Heurística)")
+
+print("\nModel C2 — CNN AutoML (Heurística):")
+plot_training_curves(history_h_automl, "CNN AutoML (Heurística)")
+
+if has_supervised:
+    print("\nModel D1 — CNN Manual (Supervisada):")
+    plot_training_curves(history_s_manual, "CNN Manual (Supervisada)")
+
+    print("\nModel D2 — CNN AutoML (Supervisada):")
+    plot_training_curves(history_s_automl, "CNN AutoML (Supervisada)")
+
+
+# ---------------------------------------------------------
+# 2. Función Unificada para Visualización de Resultados
+# ---------------------------------------------------------
+def plot_deep_analysis(model, X_test, y_test, labels_dict, title_prefix, best_thr=None):
+    class_ids = sorted(labels_dict.keys())
+    y_pred_prob = model.predict(X_test, verbose=0)
+
+    if best_thr is not None:
+        y_pred = np.argmax(y_pred_prob / best_thr, axis=1)
+        cmap_color = "Oranges"
+        title_cm = f"{title_prefix} — Threshold-tuned"
+    else:
+        y_pred = np.argmax(y_pred_prob, axis=1)
+        cmap_color = "Blues"
+        title_cm = f"{title_prefix} — Argmax"
+
+    # A. Matriz de Confusión
+    cm = confusion_matrix(y_test, y_pred, labels=class_ids)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    disp = ConfusionMatrixDisplay(cm, display_labels=[labels_dict[i] for i in class_ids])
+    disp.plot(ax=ax, cmap=cmap_color, values_format="d")
+    ax.set_title(title_cm)
+    plt.tight_layout()
+    plt.show()
+
+    # B. Distribución de Confianza
+    confidences = np.max(y_pred_prob, axis=1)
+    correct_preds = (y_pred == y_test)
+
+    plt.figure(figsize=(9, 4))
+    sns.histplot(confidences[correct_preds], bins=20, color='green', alpha=0.6, label='Predicciones Correctas', kde=True)
+    if not all(correct_preds):
+        sns.histplot(confidences[~correct_preds], bins=20, color='red', alpha=0.6, label='Errores (Falsos P/N)', kde=True)
+
+    plt.title(f'Distribución de Confianza — {title_prefix}', fontsize=12, fontweight='bold')
+    plt.xlabel('Nivel de Confianza (0.0 a 1.0)', fontsize=10)
+    plt.ylabel('Cantidad de Ventanas', fontsize=10)
+    plt.legend()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+
+print("\n" + "="*70)
+print("2. ANÁLISIS PROFUNDO DE RESULTADOS (Test Set Oculto)")
+print("="*70)
+
+print("\n--- A. PARADIGMA HEURÍSTICO (3 Clases) ---")
+plot_deep_analysis(cnn_h_manual, X_test_cnn_h, y_test_h, LABELS_3, "CNN Manual Heurística")
+plot_deep_analysis(cnn_h_automl, X_test_cnn_h, y_test_h, LABELS_3, "CNN AutoML Heurística")
+
+if has_supervised:
+    print("\n--- B. PARADIGMA SUPERVISADO (4 Clases) ---")
+    # Usamos los umbrales que calculamos y guardamos en el Bloque 32
+    thr_manual = val_res_s_manual.get("best_thresholds")
+    plot_deep_analysis(cnn_s_manual, X_test_cnn_s, y_test_s, LABELS_4, "CNN Manual Supervisada", best_thr=thr_manual)
+
+    thr_automl = val_res_s_automl.get("best_thresholds")
+    plot_deep_analysis(cnn_s_automl, X_test_cnn_s, y_test_s, LABELS_4, "CNN AutoML Supervisada", best_thr=thr_automl)
 
 
