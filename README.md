@@ -6,7 +6,7 @@
 
 Sistema de clasificación de eventos críticos de seguridad (CSE) en ciclismo urbano mediante redes neuronales, desarrollado como proyecto de término del curso de Redes Neuronales — Universidad Nacional de Colombia, Grupo 9.
 
-> **Autores:** Juan Andrés Vallejo Rozo · Andrés Felipe Rojas Aguilar · Brayan Camilo Rodríguez Diaz · Carlos David Ramírez Muñoz
+> **Autores:** Carlos David Ramírez Muñoz · Johan David Rodríguez Gutierrez
 
 ---
 
