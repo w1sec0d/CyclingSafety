@@ -141,7 +141,7 @@ You can also use the [Google Colab notebook](https://drive.google.com/file/d/1XY
 - Recalibrate and evaluate the ESP32 model with data captured from the embedded MPU-6050, since the report notes a performance gap versus smartphone-based inference.
 - Add the ESP32 firmware, wiring diagram, and build instructions to the repository so the embedded prototype can be reproduced.
 - Improve robustness of local microSD logging and connectivity handling for field rides.
-- Integrate MQTT transport and a ThingsBoard dashboard for end-to-end telemetry monitoring.
+- Improve MQTT reconnection and offline buffering under intermittent connectivity; MQTT/ThingsBoard telemetry is already demonstrated in the experimental prototype.
 
 ## License
 
