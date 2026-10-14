@@ -8,22 +8,34 @@ Español · [English](README.md)
 
 CyclingSafety explora cómo los sensores de bajo costo de un smartphone y el aprendizaje automático pueden ayudar a identificar eventos críticos durante el ciclismo urbano. Las señales del acelerómetro y el giroscopio se procesan para clasificar eventos como impactos por baches, maniobras evasivas y frenadas de emergencia. Las predicciones se asocian con coordenadas GPS para visualizar dónde ocurrieron los eventos y dónde se concentran los indicadores de severidad vial.
 
-## Resultados principales
+## Comparación preliminar de modelos
 
-| Modelo | Tarea | Conjunto de validación | Exactitud | Macro-F1 |
-|---|---|---:|---:|---:|
-| **Modelo A — MLP heurístico** | 3 clases: normal, bache, severo | 2.458 ventanas de recorridos naturales reservados | **98,17 %** | **0,954** |
-| **Modelo B — MLP supervisado** | 4 clases: normal, bache, esquivada, frenada de emergencia | 3.235 ventanas de recorridos controlados reservados | **97,81 %** | **0,888** |
+El notebook compara modelos MLP con características estadísticas diseñadas manualmente frente a redes convolucionales 1D (CNN) entrenadas sobre ventanas crudas de señales IMU. Los experimentos CNN incluyen una arquitectura manual y búsqueda bayesiana de hiperparámetros con KerasTuner (ajuste tipo AutoML).
 
-La evaluación del modelo supervisado reportó **100 % de recall en las tres clases de eventos críticos**. La precisión para la clase bache fue más moderada (0,67), por lo que el resultado debe interpretarse junto con las métricas por clase y las limitaciones del conjunto de datos. Son resultados de validación, no una afirmación de rendimiento de un sistema desplegado en toda la ciudad.
+> **Advertencia metodológica importante:** estas cifras son salidas de la ejecución actual del notebook, pero la partición **todavía no está libre de fuga de información**. Aunque un encabezado la denomina prueba reservada por recorrido, el código aplica `train_test_split` estratificado a ventanas individuales después de segmentar las señales. Cada ventana contiene 128 muestras y el desplazamiento es de 64 (50 % de solapamiento), por lo que ventanas muy similares de una misma grabación pueden aparecer en distintas particiones. Además, las copias aumentadas se generan a partir de todas las ventanas anotadas antes de dividir los datos y después se asignan al entrenamiento; así pueden entrar al entrenamiento derivados de ventanas presentes en validación o prueba. Trata las métricas siguientes como **exploratorias y posiblemente optimistas**, no como estimaciones robustas del rendimiento en recorridos no vistos.
+
+| Arquitectura | Tarea | Exactitud de la partición actual por ventanas | Macro-F1 |
+|---|---|---:|---:|
+| MLP — características diseñadas manualmente | Heurístico, 3 clases | 98,59 % | 0,9671 |
+| MLP — características diseñadas manualmente | Supervisado, 4 clases | 97,91 % | 0,8942 |
+| CNN 1D — arquitectura manual | Heurístico, 3 clases | 95,90 % | 0,9027 |
+| CNN 1D — arquitectura manual | Supervisado, 4 clases | 96,13 % | 0,6936 |
+| CNN 1D — búsqueda de hiperparámetros con KerasTuner | Heurístico, 3 clases | 98,30 % | 0,9542 |
+| **CNN 1D — búsqueda de hiperparámetros con KerasTuner** | **Supervisado, 4 clases** | **99,14 %** | **0,9468** |
+
+Para los modelos supervisados, la tabla usa umbrales de decisión ajustados con validación y luego aplicados a la partición actual de prueba. En esta ejecución, la CNN supervisada ajustada reportó un recall del 100 % en las tres clases de eventos críticos, con precisión de 0,92 para baches, 0,94 para esquivadas y 0,76 para frenadas de emergencia. Estos resultados también deben confirmarse después de corregir la partición.
+
+**Siguiente paso recomendado:** dividir por recorrido/grabación original antes de crear las ventanas, mantener todas las ventanas de cada grabación en una única partición, generar datos aumentados solo a partir del entrenamiento, ajustar hiperparámetros y umbrales con validación y evaluar una sola vez sobre recorridos de prueba no utilizados.
 
 ## Dataset
 
-- **2.046.602** muestras de sensores inerciales, armonizadas a **50 Hz**.
-- **35 recorridos**: 24 recorridos urbanos naturales y 11 recorridos controlados diseñados para registrar eventos etiquetados.
-- Aproximadamente **11,4 horas** de grabaciones.
-- **335 eventos anotados manualmente**: 152 impactos por baches, 96 maniobras evasivas y 87 frenadas de emergencia.
+- **2.760.216** muestras inerciales en la ejecución de Colab proporcionada, remuestreadas a **50 Hz**: 2.065.293 de grabaciones naturales y 694.923 de grabaciones controladas.
+- **48 archivos CSV de grabación/registros** en esa ejecución: 37 naturales y 11 controlados.
+- Aproximadamente **15,3 horas**, calculadas a partir del número de muestras remuestreadas.
+- **335 marcas de eventos anotadas manualmente**: 152 impactos por baches, 96 maniobras evasivas y 87 frenadas de emergencia.
 - Datos capturados con un Xiaomi POCO X6 y Sensor Logger; se exportaron señales de acelerómetro, giroscopio y GPS para su procesamiento.
+
+Estas cifras corresponden a la exportación de notebook proporcionada; deben reconciliarse con los resúmenes anteriores del proyecto antes de utilizarlas en un informe formal o publicación.
 
 Se evaluó el dataset público Bike&Safe, pero se excluyó del conjunto final de entrenamiento porque la escala de sus aceleraciones no era suficientemente compatible con las grabaciones propias.
 
@@ -32,7 +44,7 @@ Se evaluó el dataset público Bike&Safe, pero se excluyó del conjunto final de
 1. **Captura:** registrar acelerómetro, giroscopio y GPS con Sensor Logger en recorridos controlados y naturales.
 2. **Preprocesamiento:** combinar grabaciones, remuestrear señales inerciales a 50 Hz, interpolar valores faltantes, propagar coordenadas GPS para asociar espacialmente las ventanas y corregir/eliminar anotaciones duplicadas.
 3. **Segmentación e ingeniería de características:** dividir las series temporales en ventanas deslizantes de 128 muestras (2,56 segundos) con 50 % de solapamiento y extraer características estadísticas de las señales inerciales.
-4. **Entrenamiento y evaluación:** entrenar clasificadores MLP con TensorFlow/Keras para clasificación heurística de tres clases y clasificación supervisada de cuatro clases.
+4. **Entrenamiento y comparación:** entrenar MLP sobre características diseñadas y CNN 1D sobre ventanas crudas. Comparar una CNN de arquitectura manual con búsqueda bayesiana de hiperparámetros mediante KerasTuner en tareas heurísticas de tres clases y supervisadas de cuatro clases. Consulta la advertencia metodológica antes de interpretar las métricas actuales.
 5. **Visualización geoespacial:** asociar las predicciones con coordenadas GPS y generar mapas interactivos de eventos y mapas de calor de severidad vial con Folium.
 
 ## Mapas generados
@@ -47,7 +59,7 @@ Si GitHub no muestra directamente el HTML interactivo, descarga el archivo y áb
 
 ## Alcance de la implementación
 
-El repositorio documenta e implementa el flujo de captura mediante smartphone, el preprocesamiento IMU, el entrenamiento/evaluación de MLP y los mapas basados en GPS. También propone una arquitectura IoT/Edge Intelligence de cuatro capas:
+El repositorio contiene el flujo de captura mediante smartphone, el preprocesamiento IMU, el código de entrenamiento y evaluación MLP/CNN y los mapas basados en GPS. También propone una arquitectura IoT/Edge Intelligence de cuatro capas:
 
 | Capa | Alcance |
 |---|---|
@@ -56,17 +68,16 @@ El repositorio documenta e implementa el flujo de captura mediante smartphone, e
 | Backend | La integración con ThingsBoard está propuesta y no se presenta como un despliegue finalizado. |
 | Visualización | El análisis actual genera mapas y mapas de calor con Folium. |
 
-**Importante:** la inferencia local en ESP32/TinyML y la integración en vivo con MQTT/ThingsBoard son objetivos de trabajo futuro. Los resultados reportados provienen del entrenamiento y la validación offline con las grabaciones recolectadas.
+La inferencia local ESP32/TinyML y la integración en vivo con MQTT/ThingsBoard son objetivos de trabajo futuro. Las métricas anteriores son resultados preliminares de la partición actual por ventanas; consulta la advertencia metodológica antes de sacar conclusiones sobre la generalización a recorridos no vistos.
 
 ## Estructura del repositorio
 
 ```text
 CyclingSafety/
 ├── notebooks/
-│   ├── MLP_Cycling_Safety.ipynb
-│   ├── CNN_Cycling_Safety.ipynb
+│   ├── Cycling_Safety.ipynb       # Experimentos MLP y CNN 1D
+│   ├── Cycling_Safety.py          # Exportación Python del notebook
 │   └── research/
-│       └── Red_ART.ipynb
 ├── utils/
 │   └── combine_recordings.py
 ├── features/
@@ -75,7 +86,7 @@ CyclingSafety/
 └── README.md
 ```
 
-El repositorio también incluye experimentos con redes 1D-CNN. Las métricas destacadas en este README corresponden a los modelos MLP resumidos en la evaluación del proyecto; aquí no se presentan métricas separadas para las CNN.
+El mismo notebook incluye experimentos CNN 1D manual y con búsqueda de hiperparámetros mediante KerasTuner, además de una comparación de seis configuraciones frente a los dos modelos MLP base. La secuencia actual de partición y aumentación debe corregirse antes de interpretar las métricas como una evaluación independiente.
 
 ## Instalación y uso
 
@@ -121,6 +132,9 @@ También puedes usar el [notebook de Google Colab](https://drive.google.com/file
 
 ## Limitaciones y próximos pasos
 
+- Rehacer la partición a nivel de grabación/recorrido original antes de segmentar ventanas para evitar fuga por ventanas solapadas.
+- Generar muestras aumentadas únicamente a partir de ventanas de entrenamiento, nunca de validación o prueba.
+- Repetir las comparaciones MLP/CNN y reportar precisión, recall, macro-F1 y matrices de confusión por clase.
 - Ampliar las grabaciones etiquetadas en condiciones reales variadas y evaluar la generalización entre recorridos y ciudades.
 - Mejorar la precisión de las clases minoritarias, especialmente la detección de baches.
 - Implementar y medir el rendimiento de la inferencia en el borde con ESP32/TinyML.
