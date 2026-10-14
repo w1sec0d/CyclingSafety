@@ -4,10 +4,7 @@
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-2.21-orange)](https://tensorflow.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-Sistema de clasificación de eventos críticos de seguridad (CSE) en ciclismo urbano mediante redes neuronales, desarrollado como proyecto de término del curso de Redes Neuronales — Universidad Nacional de Colombia, Grupo 9.
-
-> **Autores:** Carlos David Ramírez Muñoz · Johan David Rodríguez Gutierrez
-
+Sistema de clasificación de eventos críticos de seguridad (CSE) en ciclismo urbano mediante redes neuronales.
 ---
 
 ## Descripción general
