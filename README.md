@@ -60,7 +60,7 @@ If GitHub does not render the interactive HTML directly, download the file and o
 
 ## Implementation scope
 
-The project combines the Python model-development workflow with an experimental embedded IoT prototype. The repository primarily contains the notebook-based preprocessing, MLP/CNN experiments, and Folium maps; the hardware and firmware work is described in the accompanying project report.
+The project combines the Python model-development workflow with an experimental embedded IoT prototype. The repository primarily contains the notebook-based preprocessing, MLP/CNN experiments, and Folium maps; the hardware and firmware work is described in the accompanying project report. The prototype firmware was developed and tested in Arduino IDE.
 
 | Layer / component | Implementation scope |
 |---|---|
@@ -69,7 +69,7 @@ The project combines the Python model-development workflow with an experimental 
 | Communication and backend | The firmware publishes geotagged event predictions using MQTT to a ThingsBoard dashboard. This was an experimental prototype, not a production deployment. |
 | Visualization | Python/Folium event maps and severity heatmaps, plus a ThingsBoard dashboard for incoming node telemetry. |
 
-The project report records a reduction in model artifact size from about 2.39 MB to 227 KB (approximately 90.5%) after quantization, with a small change in the report's benchmark metrics. The report also notes that field classification performance on the ESP32 node was lower than with smartphone-based data, so cross-device calibration and validation remain important. The firmware and hardware documentation are not part of the repository's main notebook workflow at present. The preliminary notebook metrics above still carry the window-split evaluation caveat.
+The project report records a reduction in model artifact size from 2,394.95 KB to 227.20 KB (approximately 90.5%) after INT8 quantization. Its model benchmark changed from 99.26% to 99.20% accuracy and from 0.9531 to 0.9487 macro-F1; these are model-comparison figures in the report, not a guarantee of equivalent field performance. The report also notes that field classification performance on the ESP32 node was lower than with smartphone-based data, so cross-device calibration and validation remain important. The firmware and hardware documentation are not part of the repository's main notebook workflow at present. The preliminary notebook metrics above still carry the window-split evaluation caveat.
 
 ## Repository structure
 
