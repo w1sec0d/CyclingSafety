@@ -46,6 +46,7 @@ Se evaluó el dataset público Bike&Safe, pero se excluyó del conjunto final de
 3. **Segmentación e ingeniería de características:** dividir las series temporales en ventanas deslizantes de 128 muestras (2,56 segundos) con 50 % de solapamiento y extraer características estadísticas de las señales inerciales.
 4. **Entrenamiento y comparación:** entrenar MLP sobre características diseñadas y CNN 1D sobre ventanas crudas. Comparar una CNN de arquitectura manual con búsqueda bayesiana de hiperparámetros mediante KerasTuner en tareas heurísticas de tres clases y supervisadas de cuatro clases. Consulta la advertencia metodológica antes de interpretar las métricas actuales.
 5. **Visualización geoespacial:** asociar las predicciones con coordenadas GPS y generar mapas interactivos de eventos y mapas de calor de severidad vial con Folium.
+6. **Inferencia en el borde:** construir un prototipo con ESP32, IMU MPU-6050, GPS NEO-6M y almacenamiento microSD. Cuantizar la CNN 1D supervisada a INT8, desplegarla con TensorFlow Lite Micro, ejecutar inferencia local y publicar eventos georreferenciados por MQTT a ThingsBoard.
 
 ## Mapas generados
 
@@ -59,16 +60,16 @@ Si GitHub no muestra directamente el HTML interactivo, descarga el archivo y áb
 
 ## Alcance de la implementación
 
-El repositorio contiene el flujo de captura mediante smartphone, el preprocesamiento IMU, el código de entrenamiento y evaluación MLP/CNN y los mapas basados en GPS. También propone una arquitectura IoT/Edge Intelligence de cuatro capas:
+El proyecto combina el flujo de desarrollo de modelos en Python con un prototipo IoT embebido experimental. El repositorio contiene principalmente el notebook de preprocesamiento, los experimentos MLP/CNN y los mapas Folium; el montaje de hardware y el firmware se describen en el informe complementario del proyecto. El firmware del prototipo se desarrolló y probó en Arduino IDE.
 
-| Capa | Alcance |
+| Capa / componente | Alcance de la implementación |
 |---|---|
-| Percepción | Está implementada la captura mediante IMU/GPS de smartphone; un nodo basado en ESP32 es una extensión propuesta. |
-| Comunicación | La transmisión mediante MQTT forma parte de la arquitectura propuesta. |
-| Backend | La integración con ThingsBoard está propuesta y no se presenta como un despliegue finalizado. |
-| Visualización | El análisis actual genera mapas y mapas de calor con Folium. |
+| Nodo sensor | Se construyó un prototipo con ESP32, IMU MPU-6050 de seis ejes, GPS NEO-6M y almacenamiento microSD. |
+| Inferencia en el borde | Se aplicó cuantización post-entrenamiento INT8 a la CNN 1D supervisada y se portó a TensorFlow Lite Micro para inferencia local en el ESP32. |
+| Comunicación y backend | El firmware publica predicciones georreferenciadas mediante MQTT a un dashboard de ThingsBoard. Se trata de un prototipo experimental, no de un despliegue de producción. |
+| Visualización | Mapas de eventos y mapas de calor de severidad con Python/Folium, además de un dashboard de ThingsBoard para la telemetría del nodo. |
 
-La inferencia local ESP32/TinyML y la integración en vivo con MQTT/ThingsBoard son objetivos de trabajo futuro. Las métricas anteriores son resultados preliminares de la partición actual por ventanas; consulta la advertencia metodológica antes de sacar conclusiones sobre la generalización a recorridos no vistos.
+El informe registra una reducción del tamaño del modelo de 2.394,95 KB a 227,20 KB (cerca del 90,5 %) después de la cuantización INT8. La latencia de inferencia reportada pasó de 32,82 ms/ventana a 0,03 ms/ventana; en la comparación de modelos, la exactitud pasó de 99,26 % a 99,20 % y el macro-F1 de 0,9531 a 0,9487; estas cifras corresponden a la comparación del modelo y no garantizan el mismo rendimiento en campo. También señala que el rendimiento de clasificación en campo del nodo ESP32 fue inferior al obtenido con los datos del smartphone; por ello, la calibración y validación entre dispositivos siguen siendo tareas importantes. El firmware y la documentación detallada del hardware aún no están incluidos en el flujo principal de notebooks del repositorio. Las métricas preliminares del notebook siguen sujetas a la advertencia metodológica sobre la partición por ventanas.
 
 ## Estructura del repositorio
 
@@ -125,7 +126,7 @@ python utils/combine_recordings.py --mode natural
 ### Ejecutar el notebook principal
 
 ```bash
-jupyter notebook notebooks/MLP_Cycling_Safety.ipynb
+jupyter notebook notebooks/Cycling_Safety.ipynb
 ```
 
 También puedes usar el [notebook de Google Colab](https://drive.google.com/file/d/1XYW1Dx_ZvmpX7s5-YWOH7kgPcS5dwEK0/view?usp=sharing). En Colab, descarga el dataset y móntalo o cópialo a las rutas que espera el notebook antes de ejecutar las celdas.
@@ -137,8 +138,10 @@ También puedes usar el [notebook de Google Colab](https://drive.google.com/file
 - Repetir las comparaciones MLP/CNN y reportar precisión, recall, macro-F1 y matrices de confusión por clase.
 - Ampliar las grabaciones etiquetadas en condiciones reales variadas y evaluar la generalización entre recorridos y ciudades.
 - Mejorar la precisión de las clases minoritarias, especialmente la detección de baches.
-- Implementar y medir el rendimiento de la inferencia en el borde con ESP32/TinyML.
-- Integrar MQTT y un dashboard en ThingsBoard para disponer de monitoreo de telemetría de extremo a extremo.
+- Recalibrar y evaluar el modelo con datos capturados por la IMU MPU-6050 del ESP32, porque el informe identifica una diferencia de rendimiento frente a los datos del smartphone.
+- Incorporar al repositorio el firmware del ESP32, el diagrama de conexiones y las instrucciones de compilación para reproducir el prototipo.
+- Mejorar la robustez del registro en microSD y el manejo de desconexiones durante los recorridos.
+- Mejorar la reconexión MQTT y el almacenamiento temporal sin conexión; la telemetría MQTT/ThingsBoard ya se demostró en el prototipo experimental.
 
 ## Licencia
 
