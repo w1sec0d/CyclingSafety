@@ -33,9 +33,9 @@ For supervised models, the table uses class-decision thresholds tuned on the val
 - **48 CSV recordings/logs** in that run: 37 natural and 11 controlled.
 - Approximately **15.3 hours** based on the resampled sample count.
 - **335 manually annotated event timestamps:** 152 pothole impacts, 96 evasive maneuvers, and 87 emergency-braking events.
+- Data captured with a Xiaomi POCO X6 using Sensor Logger; the device's accelerometer, gyroscope, and GPS data were exported for processing.
 
 These totals reflect the supplied notebook export; reconcile them with earlier project summaries before using the figures in a formal report or publication.
-- Data captured with a Xiaomi POCO X6 using Sensor Logger; the device's accelerometer, gyroscope, and GPS data were exported for processing.
 
 The public Bike&Safe dataset was assessed but excluded from the final model dataset because its acceleration scale was not sufficiently compatible with the project's own recordings.
 
