@@ -1,139 +1,131 @@
-# CyclingSafety — Clasificación Multiclase de Eventos de Riesgo en Ciclismo Urbano
+# CyclingSafety
 
-[![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
-[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.21-orange)](https://tensorflow.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+**Multiclass classification of urban cycling safety events using smartphone IMU data, neural networks, and GPS-based risk maps.**
 
-Sistema de clasificación de eventos críticos de seguridad (CSE) en ciclismo urbano mediante redes neuronales.
----
+English · [Español](README_ES.md)
 
-## Descripción general
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![TensorFlow](https://img.shields.io/badge/TensorFlow-Keras-orange) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-El proyecto desarrolla dos sistemas de clasificación de CSE basados en señales IMU (acelerómetro + giroscopio) capturadas con smartphone:
+CyclingSafety explores how low-cost smartphone sensors and machine learning can help identify safety-critical events during urban cycling. Accelerometer and gyroscope signals are processed to classify events such as pothole impacts, evasive maneuvers, and emergency braking. Predictions are combined with GPS coordinates to visualize where events occurred and where road-severity indicators are concentrated.
 
-| Modelo | Arquitectura | Clases | Estado |
-|---|---|---|---|
-| **Modelo A** | MLP heurístico | normal / bache / severo | ✅ Completo |
-| **Modelo B** | MLP supervisado | normal / bache / esquivada / freno | ✅ Completo |
-| **Modelo C** | 1D-CNN profunda | normal / bache / esquivada / freno | ✅ Completo  |
-| **Modelo D** | 1D-CNN (AutoML) profunda | normal / bache / esquivada / freno | ✅ Completo  |
+## Key results
 
-Los modelos entrenados se integran con coordenadas GPS para generar **mapas interactivos de calidad vial** sobre recorridos reales en Bogotá.
+| Model | Task | Validation set | Accuracy | Macro-F1 |
+|---|---|---:|---:|---:|
+| **Model A — heuristic MLP** | 3 classes: normal, pothole, severe | 2,458 windows from held-out natural-ride data | **98.17%** | **0.954** |
+| **Model B — supervised MLP** | 4 classes: normal, pothole, evasive maneuver, emergency braking | 3,235 windows from held-out controlled rides | **97.81%** | **0.888** |
 
----
+The supervised model's evaluation reported **100% recall for the three critical-event classes**. Pothole precision was more moderate (0.67), so the result should be interpreted alongside class-level metrics and the limits of the current dataset. These are validation results, not a claim of performance in a deployed, city-wide system.
 
-## Estructura del repositorio
+## Dataset at a glance
 
-```
+- **2,046,602** inertial sensor samples, harmonized to **50 Hz**.
+- **35 rides** in total: 24 natural urban rides and 11 controlled rides designed to capture labeled events.
+- Approximately **11.4 hours** of recordings.
+- **335 manually annotated events:** 152 pothole impacts, 96 evasive maneuvers, and 87 emergency-braking events.
+- Data captured with a Xiaomi POCO X6 using Sensor Logger; the device's accelerometer, gyroscope, and GPS data were exported for processing.
+
+The public Bike&Safe dataset was assessed but excluded from the final model dataset because its acceleration scale was not sufficiently compatible with the project's own recordings.
+
+## How it works
+
+1. **Capture:** Record accelerometer, gyroscope, and GPS data with Sensor Logger during controlled and natural rides.
+2. **Preprocess:** Combine recordings, resample inertial signals to 50 Hz, interpolate missing sensor values, propagate GPS coordinates for geospatial association, and correct/deduplicate manual event annotations.
+3. **Segment and engineer features:** Divide the time series into sliding windows of 128 samples (2.56 seconds) with 50% overlap, then extract statistical features from inertial signals.
+4. **Train and evaluate:** Train MLP classifiers with TensorFlow/Keras for heuristic three-class classification and supervised four-class event classification.
+5. **Map:** Join model predictions to GPS coordinates and create interactive event maps and road-severity heatmaps using Folium.
+
+## Visual outputs
+
+The repository includes interactive HTML maps generated from the analysis:
+
+- [Classified CSE events](outputs/map_mlp_events.html)
+- [Road-severity heatmap](outputs/map_severity_heatmap.html)
+- [Combined map with toggleable layers](outputs/map_combined.html)
+
+If GitHub does not render the interactive HTML directly, download the file and open it in a web browser.
+
+## Implementation scope
+
+The current repository documents and implements the smartphone-based sensing workflow, IMU preprocessing, MLP training/evaluation, and GPS-based maps. A four-layer IoT/Edge Intelligence architecture is also proposed:
+
+| Layer | Scope |
+|---|---|
+| Perception | Smartphone IMU/GPS acquisition is implemented; an ESP32-based sensor node is a proposed extension. |
+| Communication | MQTT-based transmission is part of the proposed architecture. |
+| Backend | ThingsBoard integration is proposed, not presented here as a completed deployment. |
+| Visualization | Folium-based event maps and heatmaps are generated by the current analysis. |
+
+**Important:** on-device ESP32/TinyML inference and live MQTT/ThingsBoard integration are future implementation goals. The results reported above come from offline model training and validation on collected recordings.
+
+## Repository structure
+
+```text
 CyclingSafety/
-│
 ├── notebooks/
-│   ├── MLP_Cycling_Safety.ipynb     # Pipeline principal: MLP heurístico + supervisado + mapas
-│   ├── CNN_Cycling_Safety.ipynb     # Red convolucional 1D (en desarrollo)
+│   ├── MLP_Cycling_Safety.ipynb
+│   ├── CNN_Cycling_Safety.ipynb
 │   └── research/
-│       └── Red_ART.ipynb            # Investigación: Redes ART (Adaptive Resonance Theory)
-│
+│       └── Red_ART.ipynb
 ├── utils/
-│   └── combine_recordings.py        # Preprocesamiento de grabaciones Sensor Logger → CSV 50 Hz
-│
-├── data/
-│   ├── raw/
-│   │   ├── artificial_events/       # Grabaciones etiquetadas (bache, esquivada, freno)
-│   │   └── natural_events/          # Recorridos urbanos sin etiquetar
-│   └── processed/
-│       ├── artificial_events/       # CSVs combinados a 50 Hz (artificial)
-│       └── natural_events/          # CSVs combinados a 50 Hz (natural)
-│
-├── features/                        # Artefactos de features y splits (.npy, .csv)
-├── models/                          # Modelos entrenados (.keras) y scalers (.pkl)
-│
-└── outputs/
-    ├── map_mlp_events.html          # Mapa A: marcadores de eventos CSE
-    ├── map_severity_heatmap.html    # Mapa B: heatmap de severidad promediada
-    └── map_combined.html            # Mapa combinado con capas activables
+│   └── combine_recordings.py
+├── features/
+├── models/
+├── outputs/
+└── README.md
 ```
 
----
+The repository also contains 1D-CNN experiments. The headline metrics in this README correspond to the MLP models summarized in the project evaluation; separate CNN metrics are not reported here.
 
-## Dataset
+## Getting started
 
-Los datos propios fueron recolectados con un **Xiaomi POCO X6** montado en el cuadro de la bicicleta usando **Sensor Logger**, a 100 Hz (remuestreados a 50 Hz).
+### Requirements
 
-📁 **Dataset en Google Drive:** [Acceder al dataset](https://drive.google.com/drive/folders/1-24wbZkLPmLIyj7BUMyjm0R-Bd0dZiIx?usp=sharing)
+- Python 3.10 or later
+- Packages listed in `requirements.txt`
 
----
-
-## Instalación y uso
-
-### Requisitos
-
-```bash
-python >= 3.10
-tensorflow >= 2.21
-scikit-learn
-imbalanced-learn   # para SMOTE
-folium             # para mapas interactivos
-pandas, numpy, scipy, matplotlib, seaborn
-```
-
-### Configuración del entorno local
+### Install
 
 ```bash
 git clone https://github.com/w1sec0d/CyclingSafety.git
 cd CyclingSafety
 python -m venv .venv
-source .venv/bin/activate        # Linux/macOS
-# .venv\Scripts\activate         # Windows
+
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+# .venv\\Scripts\\Activate.ps1
+
 pip install -r requirements.txt
 ```
 
-### Preprocesar datos
+### Get the dataset
 
-Antes de ejecutar el notebook, generar los CSVs combinados desde las grabaciones crudas:
+The raw recordings are not stored in this repository because of their size. Download them from the [CyclingSafety dataset folder on Google Drive](https://drive.google.com/drive/folders/1-24wbZkLPmLIyj7BUMyjm0R-Bd0dZiIx?usp=sharing), then place them in the expected `data/raw/` folders.
+
+### Preprocess recordings
 
 ```bash
-# Recorridos artificiales (con procesamiento de anotaciones)
 python utils/combine_recordings.py --mode artificial
-
-# Recorridos naturales
 python utils/combine_recordings.py --mode natural
 ```
 
-### Ejecutar el notebook principal
+### Run the main notebook
 
 ```bash
 jupyter notebook notebooks/MLP_Cycling_Safety.ipynb
 ```
 
-O acceder directamente en **Google Colab:** [Abrir en Colab](https://drive.google.com/file/d/1XYW1Dx_ZvmpX7s5-YWOH7kgPcS5dwEK0/view?usp=sharing)
+You can also use the [Google Colab notebook](https://drive.google.com/file/d/1XYW1Dx_ZvmpX7s5-YWOH7kgPcS5dwEK0/view?usp=sharing). In Colab, download the dataset and mount/copy it to the paths expected by the notebook before running the cells.
 
-> **Nota Colab:** los datos no están incluidos en el repositorio (archivos > 100 MB). Descargar el dataset desde el enlace de Drive y montarlo en `/content/data/` antes de ejecutar.
+## Limitations and next steps
 
----
+- Expand labeled recordings in varied real-world conditions and evaluate generalization across routes and cities.
+- Improve the precision of minority event classes, especially pothole detection.
+- Implement and benchmark the ESP32/TinyML edge-inference path.
+- Integrate MQTT transport and a ThingsBoard dashboard for end-to-end telemetry monitoring.
 
-## Notebooks de investigación
+## License
 
-El directorio `notebooks/research/` contiene notebooks de estudio sobre arquitecturas de redes neuronales no directamente ligadas al problema de ciclismo, desarrollados como parte del contexto académico del curso:
-
-| Notebook | Tema |
-|---|---|
-| `Red_ART.ipynb` | Redes ART (Adaptive Resonance Theory): aprendizaje no supervisado, clustering incremental, dilema plasticidad–estabilidad |
-
----
-
-## Configuraciones para GPU local
-
-Si se ejecuta localmente con GPU NVIDIA y se presentan errores de XLA, el notebook incluye las siguientes configuraciones en la primera celda:
-
-```python
-os.environ["TF_XLA_FLAGS"] = "--tf_xla_auto_jit=0"
-# jit_compile=False en model.compile(...)
-```
-
-Estas configuraciones **no se activan en Colab** (donde no generan el mismo conflicto) gracias a la detección automática del entorno de ejecución.
-
----
-
-## Licencia
-
-MIT License — ver archivo [LICENSE](LICENSE) para más detalles.
+Distributed under the [MIT License](LICENSE).

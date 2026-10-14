@@ -1,0 +1,10 @@
+tensorflow>=2.21
+scikit-learn
+imbalanced-learn
+folium
+pandas
+numpy
+scipy
+matplotlib
+seaborn
+jupyter
