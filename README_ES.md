@@ -60,7 +60,7 @@ Si GitHub no muestra directamente el HTML interactivo, descarga el archivo y áb
 
 ## Alcance de la implementación
 
-El proyecto combina el flujo de desarrollo de modelos en Python con un prototipo IoT embebido experimental. El repositorio contiene principalmente el notebook de preprocesamiento, los experimentos MLP/CNN y los mapas Folium; el montaje de hardware y el firmware se describen en el informe complementario del proyecto.
+El proyecto combina el flujo de desarrollo de modelos en Python con un prototipo IoT embebido experimental. El repositorio contiene principalmente el notebook de preprocesamiento, los experimentos MLP/CNN y los mapas Folium; el montaje de hardware y el firmware se describen en el informe complementario del proyecto. El firmware del prototipo se desarrolló y probó en Arduino IDE.
 
 | Capa / componente | Alcance de la implementación |
 |---|---|
@@ -69,7 +69,7 @@ El proyecto combina el flujo de desarrollo de modelos en Python con un prototipo
 | Comunicación y backend | El firmware publica predicciones georreferenciadas mediante MQTT a un dashboard de ThingsBoard. Se trata de un prototipo experimental, no de un despliegue de producción. |
 | Visualización | Mapas de eventos y mapas de calor de severidad con Python/Folium, además de un dashboard de ThingsBoard para la telemetría del nodo. |
 
-El informe registra una reducción del tamaño del modelo de aproximadamente 2,39 MB a 227 KB (cerca del 90,5 %) después de la cuantización, con una variación pequeña en las métricas reportadas para esa prueba. También señala que el rendimiento de clasificación en campo del nodo ESP32 fue inferior al obtenido con los datos del smartphone; por ello, la calibración y validación entre dispositivos siguen siendo tareas importantes. El firmware y la documentación detallada del hardware aún no están incluidos en el flujo principal de notebooks del repositorio. Las métricas preliminares del notebook siguen sujetas a la advertencia metodológica sobre la partición por ventanas.
+El informe registra una reducción del tamaño del modelo de 2.394,95 KB a 227,20 KB (cerca del 90,5 %) después de la cuantización INT8. En la comparación de modelos reportada, la exactitud pasó de 99,26 % a 99,20 % y el macro-F1 de 0,9531 a 0,9487; estas cifras corresponden a la comparación del modelo y no garantizan el mismo rendimiento en campo. También señala que el rendimiento de clasificación en campo del nodo ESP32 fue inferior al obtenido con los datos del smartphone; por ello, la calibración y validación entre dispositivos siguen siendo tareas importantes. El firmware y la documentación detallada del hardware aún no están incluidos en el flujo principal de notebooks del repositorio. Las métricas preliminares del notebook siguen sujetas a la advertencia metodológica sobre la partición por ventanas.
 
 ## Estructura del repositorio
 
