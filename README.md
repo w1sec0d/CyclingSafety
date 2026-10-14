@@ -8,20 +8,28 @@ English · [Español](README_ES.md)
 
 CyclingSafety explores how low-cost smartphone sensors and machine learning can help identify safety-critical events during urban cycling. Accelerometer and gyroscope signals are processed to classify events such as pothole impacts, evasive maneuvers, and emergency braking. Predictions are combined with GPS coordinates to visualize where events occurred and where road-severity indicators are concentrated.
 
-## Key results
+## Model comparison and results
 
-| Model | Task | Validation set | Accuracy | Macro-F1 |
-|---|---|---:|---:|---:|
-| **Model A — heuristic MLP** | 3 classes: normal, pothole, severe | 2,458 windows from held-out natural-ride data | **98.17%** | **0.954** |
-| **Model B — supervised MLP** | 4 classes: normal, pothole, evasive maneuver, emergency braking | 3,235 windows from held-out controlled rides | **97.81%** | **0.888** |
+The notebook compares shallow MLP classifiers using hand-crafted statistical features with 1D convolutional neural networks (CNNs) trained on raw inertial windows. The CNN experiments include a manually designed architecture and Bayesian hyperparameter search with KerasTuner (AutoML-style tuning).
 
-The supervised model's evaluation reported **100% recall for the three critical-event classes**. Pothole precision was more moderate (0.67), so the result should be interpreted alongside class-level metrics and the limits of the current dataset. These are validation results, not a claim of performance in a deployed, city-wide system.
+| Architecture | Classification setup | Route-level hold-out test accuracy | Macro-F1 |
+|---|---|---:|---:|
+| MLP — hand-crafted features | Heuristic, 3 classes | 98.59% | 0.9671 |
+| MLP — hand-crafted features | Supervised, 4 classes | 97.91% | 0.8942 |
+| 1D-CNN — manual architecture | Heuristic, 3 classes | 95.90% | 0.9027 |
+| 1D-CNN — manual architecture | Supervised, 4 classes | 96.13% | 0.6936 |
+| 1D-CNN — KerasTuner hyperparameter search | Heuristic, 3 classes | 98.30% | 0.9542 |
+| **1D-CNN — KerasTuner hyperparameter search** | **Supervised, 4 classes** | **99.14%** | **0.9468** |
+
+The best reported supervised result came from the KerasTuner-selected 1D-CNN: 99.14% accuracy and 0.9468 macro-F1 on 1,627 held-out windows. The notebook reports 100% recall for the three critical-event classes for this model, with class-level precision of 0.92 for potholes, 0.94 for evasive maneuvers, and 0.76 for emergency braking. The manually designed supervised CNN scored lower on macro-F1 (0.6936), illustrating why accuracy alone is not enough when normal riding greatly outnumbers critical events.
+
+For supervised configurations, class-decision thresholds were tuned on the validation set before the final test-set evaluation. These are offline results from a route-level hold-out split, not evidence of real-world production or city-wide deployment.
 
 ## Dataset at a glance
 
-- **2,046,602** inertial sensor samples, harmonized to **50 Hz**.
-- **35 rides** in total: 24 natural urban rides and 11 controlled rides designed to capture labeled events.
-- Approximately **11.4 hours** of recordings.
+- **2,760,216** inertial sensor samples after preprocessing, harmonized to **50 Hz**.
+- **48 rides** in the exported Colab run: 37 natural urban rides and 11 controlled rides designed to capture labeled events.
+- Approximately **15.3 hours** of recordings based on the resampled sample count.
 - **335 manually annotated events:** 152 pothole impacts, 96 evasive maneuvers, and 87 emergency-braking events.
 - Data captured with a Xiaomi POCO X6 using Sensor Logger; the device's accelerometer, gyroscope, and GPS data were exported for processing.
 
@@ -32,7 +40,7 @@ The public Bike&Safe dataset was assessed but excluded from the final model data
 1. **Capture:** Record accelerometer, gyroscope, and GPS data with Sensor Logger during controlled and natural rides.
 2. **Preprocess:** Combine recordings, resample inertial signals to 50 Hz, interpolate missing sensor values, propagate GPS coordinates for geospatial association, and correct/deduplicate manual event annotations.
 3. **Segment and engineer features:** Divide the time series into sliding windows of 128 samples (2.56 seconds) with 50% overlap, then extract statistical features from inertial signals.
-4. **Train and evaluate:** Train MLP classifiers with TensorFlow/Keras for heuristic three-class classification and supervised four-class event classification.
+4. **Train and evaluate:** Train MLP classifiers on engineered features and 1D-CNNs on raw windows. Compare a manually designed CNN with KerasTuner-based Bayesian hyperparameter search across heuristic three-class and supervised four-class tasks.
 5. **Map:** Join model predictions to GPS coordinates and create interactive event maps and road-severity heatmaps using Folium.
 
 ## Visual outputs
@@ -63,10 +71,9 @@ The current repository documents and implements the smartphone-based sensing wor
 ```text
 CyclingSafety/
 ├── notebooks/
-│   ├── MLP_Cycling_Safety.ipynb
-│   ├── CNN_Cycling_Safety.ipynb
+│   ├── Cycling_Safety.ipynb       # MLP and 1D-CNN experiments
+│   ├── Cycling_Safety.py          # Python export of the notebook
 │   └── research/
-│       └── Red_ART.ipynb
 ├── utils/
 │   └── combine_recordings.py
 ├── features/
@@ -75,7 +82,7 @@ CyclingSafety/
 └── README.md
 ```
 
-The repository also contains 1D-CNN experiments. The headline metrics in this README correspond to the MLP models summarized in the project evaluation; separate CNN metrics are not reported here.
+The same notebook includes the manual and KerasTuner-selected 1D-CNN experiments and a final six-row comparison against both MLP baselines.
 
 ## Getting started
 
