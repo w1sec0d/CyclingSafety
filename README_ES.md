@@ -141,7 +141,7 @@ También puedes usar el [notebook de Google Colab](https://drive.google.com/file
 - Recalibrar y evaluar el modelo con datos capturados por la IMU MPU-6050 del ESP32, porque el informe identifica una diferencia de rendimiento frente a los datos del smartphone.
 - Incorporar al repositorio el firmware del ESP32, el diagrama de conexiones y las instrucciones de compilación para reproducir el prototipo.
 - Mejorar la robustez del registro en microSD y el manejo de desconexiones durante los recorridos.
-- Integrar MQTT y un dashboard en ThingsBoard para disponer de monitoreo de telemetría de extremo a extremo.
+- Mejorar la reconexión MQTT y el almacenamiento temporal sin conexión; la telemetría MQTT/ThingsBoard ya se demostró en el prototipo experimental.
 
 ## Licencia
 
