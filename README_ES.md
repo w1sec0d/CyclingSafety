@@ -33,9 +33,9 @@ Para los modelos supervisados, la tabla usa umbrales de decisión ajustados con 
 - **48 archivos CSV de grabación/registros** en esa ejecución: 37 naturales y 11 controlados.
 - Aproximadamente **15,3 horas**, calculadas a partir del número de muestras remuestreadas.
 - **335 marcas de eventos anotadas manualmente**: 152 impactos por baches, 96 maniobras evasivas y 87 frenadas de emergencia.
+- Datos capturados con un Xiaomi POCO X6 y Sensor Logger; se exportaron señales de acelerómetro, giroscopio y GPS para su procesamiento.
 
 Estas cifras corresponden a la exportación de notebook proporcionada; deben reconciliarse con los resúmenes anteriores del proyecto antes de utilizarlas en un informe formal o publicación.
-- Datos capturados con un Xiaomi POCO X6 y Sensor Logger; se exportaron señales de acelerómetro, giroscopio y GPS para su procesamiento.
 
 Se evaluó el dataset público Bike&Safe, pero se excluyó del conjunto final de entrenamiento porque la escala de sus aceleraciones no era suficientemente compatible con las grabaciones propias.
 
